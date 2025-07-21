@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { reviewCode, reviewRepo, reviewCommitDiff } from '../services/api';
 import SmartDiffViewer from './SmartDiffViewer';
+import ScoreBadge from './ScoreBadge';
+
+
 
 interface ReviewResult {
   readability_score: number;
@@ -20,6 +23,8 @@ const CodeReview: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [scores, setScores] = useState<ReviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diffText, setDiffText] = useState<string>('');
+
 
   const [repoUrl, setRepoUrl] = useState('');
   const [repoResults, setRepoResults] = useState<FileReviewResult[]>([]);
@@ -117,21 +122,25 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
     URL.revokeObjectURL(url);
   };
 
-  const handleSmartDiffReview = async () => {
-    setLoading(true);
-    setError(null);
-    setScores(null);
-    setRepoResults([]);
+const handleSmartDiffReview = async () => {
+  setLoading(true);
+  setError(null);
+  setScores(null);
+  setRepoResults([]);
+  setDiffText('');
 
-    try {
-      const data = await reviewCommitDiff(repoUrl) as { reviews: FileReviewResult[] };
-      setRepoResults(data.reviews || []);
-    } catch (err) {
-      setError('Failed to fetch commit diff review.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    const data = await reviewCommitDiff(repoUrl) as { diff: string, reviews: FileReviewResult[] };
+
+    if (data.diff) setDiffText(data.diff);
+    if (data.reviews) setRepoResults(data.reviews);
+  } catch (err) {
+    setError('Failed to fetch commit diff review.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div style={{ padding: '2rem', maxWidth: '800px', margin: 'auto' }}>
@@ -172,12 +181,12 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
       {scores && (
         <div style={{ marginTop: '2rem' }}>
           <h3>Scores</h3>
-          <ul>
-            <li><strong>Readability:</strong> {scores.readability_score}/10</li>
-            <li><strong>Code Quality:</strong> {scores.code_quality_score}/10</li>
-            <li><strong>Best Practices:</strong> {scores.best_practices_score}/10</li>
-            <li><strong>Bug Risk:</strong> {scores.bug_risk_score}/10</li>
-          </ul>
+<div className="flex flex-wrap gap-2">
+  <ScoreBadge score={scores.readability_score} label="Readability" />
+  <ScoreBadge score={scores.code_quality_score} label="Code Quality" />
+  <ScoreBadge score={scores.best_practices_score} label="Best Practices" />
+  <ScoreBadge score={scores.bug_risk_score} label="Bug Risk" />
+</div>
 
           <h3>Suggestions</h3>
           <ul>
@@ -202,12 +211,12 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
               {res.error ? (
                 <p style={{ color: 'red' }}>Error: {res.error}</p>
               ) : (
-                <ul>
-                  <li><strong>Readability:</strong> {res.readability_score}/10</li>
-                  <li><strong>Code Quality:</strong> {res.code_quality_score}/10</li>
-                  <li><strong>Best Practices:</strong> {res.best_practices_score}/10</li>
-                  <li><strong>Bug Risk:</strong> {res.bug_risk_score}/10</li>
-                </ul>
+<div className="flex flex-wrap gap-2">
+  <ScoreBadge score={res.readability_score} label="Readability" />
+  <ScoreBadge score={res.code_quality_score} label="Code Quality" />
+  <ScoreBadge score={res.best_practices_score} label="Best Practices" />
+  <ScoreBadge score={res.bug_risk_score} label="Bug Risk" />
+</div>
               )}
 
               {res.detailed_suggestions && (
@@ -229,16 +238,44 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
 
           <div style={{ marginTop: '3rem' }}>
             <h3>Commit Diff Viewer</h3>
-            <SmartDiffViewer
-              diffObjects={repoResults.map(res => ({
-                file: res.file,
-                old_code: '', // optionally replace with real diff later
-                new_code: '',
-              }))}
-              suggestions={Object.fromEntries(
-                repoResults.map(res => [res.file, res.detailed_suggestions || []])
-              )}
-            />
+              <SmartDiffViewer
+                diffText={diffText}
+                diffObjects={repoResults
+                  .filter(res => !res.error && 'old_code' in res && 'new_code' in res)
+                  .map(res => ({
+                    file: res.file,
+                    old_code: (res as any).old_code || '',
+                    new_code: (res as any).new_code || '',
+                  }))}
+                suggestions={Object.fromEntries(
+                  repoResults.map(res => [res.file, res.detailed_suggestions || []])
+                )}
+              />
+              {repoResults.length > 0 && diffText && (
+                  <button
+                    onClick={() => {
+                      const header = `# Smart Diff Review Report\nRepository: ${repoUrl}\nDate: ${new Date().toLocaleString()}\n\n---\n`;
+                      const body = repoResults.map(({ file, detailed_suggestions }) =>
+                        `## ${file}\n\n${detailed_suggestions.length > 0
+                          ? '**Suggestions:**\n' + detailed_suggestions.map(s => `- ${s}`).join('\n')
+                          : '_No suggestions._'}`).join('\n\n---\n\n');
+
+                      const blob = new Blob([header + body], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = 'smart-diff-review.md';
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    style={{ marginTop: '1.5rem', backgroundColor: '#2563eb', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.375rem', border: 'none' }}
+                  >
+                    Export Smart Diff Review as Markdown
+                  </button>
+                )}
+
+
+
           </div>
         </div>
       )}

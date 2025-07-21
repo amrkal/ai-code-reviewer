@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import SmartDiffViewer from './SmartDiffViewer';
 import { reviewCode, reviewRepo, reviewCommitDiff } from '../services/api';
+import SmartDiffViewer from './SmartDiffViewer';
 
 interface ReviewResult {
   readability_score: number;
@@ -15,6 +15,12 @@ interface FileReviewResult extends ReviewResult {
   error?: string;
 }
 
+interface DiffFile {
+  file: string;
+  old_code: string;
+  new_code: string;
+}
+
 const CodeReview: React.FC = () => {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,6 +29,7 @@ const CodeReview: React.FC = () => {
 
   const [repoUrl, setRepoUrl] = useState('');
   const [repoResults, setRepoResults] = useState<FileReviewResult[]>([]);
+  const [diffResults, setDiffResults] = useState<DiffFile[]>([]);
 
   const handleRepoExport = () => {
     if (repoResults.length === 0) return;
@@ -59,6 +66,7 @@ ${res.detailed_suggestions.map((s: string) => `- ${s}`).join('\n')}`;
     setError(null);
     setScores(null);
     setRepoResults([]);
+    setDiffResults([]);
 
     try {
       const result = await reviewCode(code) as ReviewResult;
@@ -80,10 +88,10 @@ ${res.detailed_suggestions.map((s: string) => `- ${s}`).join('\n')}`;
     setError(null);
     setScores(null);
     setRepoResults([]);
+    setDiffResults([]);
 
     try {
       const data = await reviewRepo(repoUrl) as { reviews: FileReviewResult[] };
-      console.log("Repo review response:", data);
       setRepoResults(data.reviews || []);
     } catch (err) {
       setError('Failed to analyze repo.');
@@ -122,10 +130,11 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
     setError(null);
     setScores(null);
     setRepoResults([]);
+    setDiffResults([]);
 
     try {
-      const data = await reviewCommitDiff(repoUrl) as { reviews: FileReviewResult[] };
-      setRepoResults(data.reviews || []);
+      const data = await reviewCommitDiff(repoUrl) as { diffs: DiffFile[] };
+      setDiffResults(data.diffs || []);
     } catch (err) {
       setError('Failed to fetch commit diff review.');
     } finally {
@@ -195,21 +204,7 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
       {repoResults.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h3>GitHub Repo Review Results</h3>
-          {repoResults.length > 0 && (
-  <>
-    <h3 style={{ marginTop: '2rem' }}>Commit Diff Viewer</h3>
-    <SmartDiffViewer
-      diffObjects={repoResults.map(res => ({
-        file: res.file,
-        old_code: '', // optional: include actual old code if needed
-        new_code: '', // optional: include actual new code if needed
-      }))}
-      suggestions={Object.fromEntries(
-        repoResults.map(res => [res.file, res.detailed_suggestions || []])
-      )}
-    />
-  </>
-)}
+
           {repoResults.map((res, idx) => (
             <div key={idx} style={{ marginBottom: '1.5rem' }}>
               <h4>{res.file}</h4>
@@ -243,7 +238,17 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
         </div>
       )}
 
-      {repoResults.length === 0 && !loading && repoUrl && (
+      {diffResults.length > 0 && (
+        <div style={{ marginTop: '3rem' }}>
+          <h3>Commit Diff Viewer</h3>
+          <SmartDiffViewer
+            diffObjects={diffResults}
+            suggestions={{}}
+          />
+        </div>
+      )}
+
+      {repoResults.length === 0 && diffResults.length === 0 && !loading && repoUrl && (
         <p style={{ marginTop: '1rem', color: 'gray' }}>
           No reviewable files found or something went wrong.
         </p>

@@ -1,6 +1,6 @@
 // SmartDiffViewer.tsx (React-Diff & Diff2HTML)
 import React, { useEffect, useState } from 'react';
-import DiffViewer from 'react-diff-viewer';
+import DiffViewer from 'react-diff-viewer-continued';
 import * as Diff2Html from 'diff2html';
 import 'diff2html/bundles/css/diff2html.min.css';
 
@@ -58,13 +58,17 @@ const SmartDiffViewer: React.FC<Props> = ({ diffText, diffObjects = [], suggesti
                 splitView={true}
                 showDiffOnly={false}
               />
-              {suggestions[diff.file] && suggestions[diff.file].length > 0 && (
-                <ul style={{ marginTop: '0.5rem' }}>
-                  {suggestions[diff.file].map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              )}
+                  {suggestions[diff.file] && suggestions[diff.file].length > 0 && (
+                    <div className="mt-2 bg-yellow-50 border border-yellow-200 p-3 rounded text-sm">
+                      <p className="font-semibold mb-1">AI Suggestions:</p>
+                      <ul className="list-disc pl-5">
+                        {suggestions[diff.file].map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
             </div>
           ))}
         </>
