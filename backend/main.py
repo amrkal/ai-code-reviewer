@@ -217,22 +217,36 @@ class DiffRepoInput(BaseModel):
 async def review_commit_diff(input: DiffRepoInput):
     try:
         parsed = urlparse(input.url)
-        user, repo = parsed.path.strip("/").split("/")[:2]
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) < 2:
+            raise Exception("Invalid GitHub URL")
 
+        user, repo = parts[0], parts[1]
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"token {os.getenv('GITHUB_TOKEN')}"
+        }
+
+        # Get latest commit
         commits_url = f"https://api.github.com/repos/{user}/{repo}/commits"
-        commits_res = requests.get(commits_url)
+        commits_res = requests.get(commits_url, headers=headers)
         if commits_res.status_code != 200:
             raise Exception("Failed to fetch commits")
+        commits_json = commits_res.json()
+        if not isinstance(commits_json, list) or not commits_json:
+            raise Exception("No commits found")
 
-        latest_commit = commits_res.json()[0]
+        latest_commit = commits_json[0]
         parent_sha = latest_commit["parents"][0]["sha"]
         current_sha = latest_commit["sha"]
 
-        commit_url = latest_commit["url"]
-        commit_data = requests.get(commit_url).json()
-        files = commit_data.get("files", [])
+        # Get list of changed files
+        commit_details = requests.get(latest_commit["url"], headers=headers).json()
+        files = commit_details.get("files", [])
+        if not files:
+            raise Exception("No changed files in the latest commit")
 
-        diff_results = []
+        results = []
 
         for f in files:
             filename = f["filename"]
@@ -247,67 +261,25 @@ async def review_commit_diff(input: DiffRepoInput):
                 old_res = requests.get(raw_old)
                 old_code = old_res.text if old_res.status_code == 200 else ""
 
-                diff_results.append({
+                result = call_gpt_review(new_code)
+                results.append({
                     "file": filename,
                     "old_code": old_code,
-                    "new_code": new_code
+                    "new_code": new_code,
+                    **result
                 })
 
             except Exception as fetch_err:
-                diff_results.append({
+                results.append({
                     "file": filename,
-                    "error": f"Failed to fetch code: {str(fetch_err)}"
+                    "error": f"Failed to fetch or review file: {str(fetch_err)}"
                 })
 
-        return {"diffs": diff_results}
+        return {"reviews": results}
 
     except Exception as e:
         print("[ERROR] Commit diff review failed:", str(e))
         raise HTTPException(status_code=500, detail=f"Commit diff review failed: {str(e)}")
-
-    try:
-        parsed = urlparse(input.url)
-        parts = parsed.path.strip("/").split("/")
-        if len(parts) < 2:
-            raise Exception("Invalid GitHub URL")
-
-        user, repo = parts[0], parts[1]
-
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"token {os.getenv('GITHUB_TOKEN')}"
-        }
-
-        # Step 1: Get latest commit
-        commits_url = f"https://api.github.com/repos/{user}/{repo}/commits"
-        commits_res = requests.get(commits_url, headers=headers)
-        if commits_res.status_code != 200:
-            raise Exception(f"Failed to fetch commits: {commits_res.status_code}")
-        commits_json = commits_res.json()
-        if not isinstance(commits_json, list) or len(commits_json) == 0:
-            raise Exception("No commits found")
-        latest_commit = commits_json[0]
-
-        # Step 2: Get list of changed files in the latest commit
-        commit_details = requests.get(latest_commit["url"], headers=headers).json()
-        files = commit_details.get("files", [])
-        if not files:
-            raise Exception("No changed files in the latest commit")
-
-        review_results = []
-        for f in files:
-            if f["status"] in ["added", "modified"] and valid_code_file(f["filename"]):
-                try:
-                    raw_code = requests.get(f["raw_url"]).text
-                except:
-                    raise Exception(f"Failed to fetch raw file: {f['raw_url']}")
-                result = call_gpt_review(raw_code)
-                review_results.append({"file": f["filename"], **result})
-        return {"reviews": review_results}
-
-    except Exception as e:
-        print("[ERROR] Commit diff review failed:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 def fetch_commit_changed_files(user: str, repo: str) -> list:

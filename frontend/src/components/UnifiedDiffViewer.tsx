@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { reviewCode, reviewRepo, reviewCommitDiff } from '../services/api';
 import SmartDiffViewer from './SmartDiffViewer';
+import { reviewCode, reviewRepo, reviewCommitDiff } from '../services/api';
 
 interface ReviewResult {
   readability_score: number;
@@ -195,7 +195,21 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
       {repoResults.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h3>GitHub Repo Review Results</h3>
-
+          {repoResults.length > 0 && (
+  <>
+    <h3 style={{ marginTop: '2rem' }}>Commit Diff Viewer</h3>
+    <SmartDiffViewer
+      diffObjects={repoResults.map(res => ({
+        file: res.file,
+        old_code: '', // optional: include actual old code if needed
+        new_code: '', // optional: include actual new code if needed
+      }))}
+      suggestions={Object.fromEntries(
+        repoResults.map(res => [res.file, res.detailed_suggestions || []])
+      )}
+    />
+  </>
+)}
           {repoResults.map((res, idx) => (
             <div key={idx} style={{ marginBottom: '1.5rem' }}>
               <h4>{res.file}</h4>
@@ -226,20 +240,6 @@ ${scores.detailed_suggestions.map(s => `- ${s}`).join('\n')}`;
           <button onClick={handleRepoExport} style={{ marginTop: '1rem' }}>
             Export Repo Review as Markdown
           </button>
-
-          <div style={{ marginTop: '3rem' }}>
-            <h3>Commit Diff Viewer</h3>
-            <SmartDiffViewer
-              diffObjects={repoResults.map(res => ({
-                file: res.file,
-                old_code: '', // optionally replace with real diff later
-                new_code: '',
-              }))}
-              suggestions={Object.fromEntries(
-                repoResults.map(res => [res.file, res.detailed_suggestions || []])
-              )}
-            />
-          </div>
         </div>
       )}
 
